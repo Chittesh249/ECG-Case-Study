@@ -108,6 +108,17 @@ Open the `notebooks/` directory in VS Code or Jupyter and run cells from top to 
 
 `classification_preprocessing.ipynb` loads the ECG arrays, inspects signal and label distributions, and prepares the classification data for modeling.
 
+`classification.ipynb` imports the preprocessed dataset from `classification_preprocessing.ipynb`, splits the data into training and testing sets, and trains five classification algorithms with strict hyperparameter regularization to prevent model overfitting:
+
+1. **Logistic Regression** (Baseline classifier; L2 regularization tuning over $C$; odds ratio analysis)
+2. **K-Nearest Neighbors (KNN)** (Hyperparameter tuning enforcing $k \ge 3$; distance metrics & feature scaling analysis)
+3. **Gaussian Naive Bayes** (`var_smoothing` tuning; check of conditional independence assumption)
+4. **Decision Tree Classifier** (Constraining `max_depth`, `min_samples_split`, and `min_samples_leaf`; tree visualization & feature importances)
+5. **Support Vector Machine (SVC)** (Tuning regularization parameter $C$ and `kernel`; feature scaling analysis)
+
+---
+
+
 ### Regression
 
 `regression_preprocessing.ipynb` follows this sequence:
