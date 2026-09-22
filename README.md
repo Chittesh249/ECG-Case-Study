@@ -158,3 +158,7 @@ Because the notebooks are exploratory, exact model scores depend on the cells ru
 ## Attribution
 
 The project uses the MIT-BIH Arrhythmia Database provided through PhysioNet and the New York State SPARCS hospital discharge dataset provided through New York Open Data. Follow each source's terms of use and citation requirements when distributing results.
+
+## AI Assistance Disclosure
+
+In accordance with Section 7.5 of the 23CSE301 Capstone Guidelines, generative AI tools were utilized exclusively for code scaffolding, repetitive boilerplate assistance, and Markdown table formatting. All exploratory data analysis, data quality investigations, feature selection decisions (including the exclusion of Production), model interpretations, and conclusions were independently conducted and reasoned by the project team. **Chatgpt** has been used for the error rectification and boilerplate generation. **Perplexity** for the research part of finding the correct dataset and its usage.
