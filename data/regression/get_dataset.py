@@ -15,7 +15,7 @@ import urllib.request
 from pathlib import Path
 
 
-CATALOG_URL = "https://data.ny.gov/api/catalog/v1"
+CATALOG_URL = "https://www.kaggle.com/datasets/thedevastator/2010-new-york-state-hospital-inpatient-discharge"
 DATASET_TITLE = "Hospital Inpatient Discharges (SPARCS De-Identified): 2010"
 DEFAULT_OUTPUT = (
 	Path(__file__).resolve().parents[2]
