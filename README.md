@@ -16,8 +16,9 @@ The notebooks contain exploratory data analysis, preprocessing, feature engineer
 │   └── regression/get_dataset.py       # Download the 2010 SPARCS CSV
 ├── notebooks/
 │   ├── classification_preprocessing.ipynb
+│   ├── classification.ipynb
 │   ├── regression_preprocessing.ipynb
-│   └── regression.ipynb
+│   └── regression_fast.ipynb
 ├── preprocessed_dataset/                # ECG NumPy/features used by notebooks
 ├── regression_dataset/                  # Downloaded SPARCS CSV
 ├── requirements.txt
