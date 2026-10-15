@@ -1,12 +1,11 @@
-# ECG & Machine Learning Case Study
+# ECG Case Study
 
-This project explores three core machine-learning tasks:
+This project explores two healthcare machine-learning tasks:
 
 1. **ECG classification** using the MIT-BIH Arrhythmia Database.
 2. **Hospital length-of-stay regression** using the New York State Hospital Inpatient Discharges (SPARCS De-Identified): 2010 dataset.
-3. **Credit card customer segmentation clustering** using the Kaggle Credit Card dataset, implementing **K-Means Clustering** and **Agglomerative Hierarchical Clustering**.
 
-The notebooks contain exploratory data analysis, preprocessing, feature engineering, and model-ready outputs across the three tracks.
+The notebooks contain exploratory data analysis, preprocessing, feature engineering, and model-ready outputs for the two tracks.
 
 ## Project Structure
 
@@ -14,17 +13,14 @@ The notebooks contain exploratory data analysis, preprocessing, feature engineer
 .
 ├── data/
 │   ├── classification/get_dataset.py   # Download MIT-BIH records
-│   ├── regression/get_dataset.py       # Download the 2010 SPARCS CSV
-│   └── clustering/get_dataset.py       # Download CC GENERAL.csv dataset
+│   └── regression/get_dataset.py       # Download the 2010 SPARCS CSV
 ├── notebooks/
 │   ├── classification_preprocessing.ipynb
 │   ├── classification.ipynb
 │   ├── regression_preprocessing.ipynb
-│   ├── regression_fast.ipynb
-│   └── clustering.ipynb                # K-Means & Agglomerative Clustering
+│   └── regression_fast.ipynb
 ├── preprocessed_dataset/                # ECG NumPy/features used by notebooks
 ├── regression_dataset/                  # Downloaded SPARCS CSV
-├── clustering_dataset/                  # CC GENERAL.csv & credit_card_clusters.csv
 ├── requirements.txt
 └── README.md
 ```
@@ -105,14 +101,6 @@ The script downloads raw MIT-BIH WFDB records to `data/mitdb/`. The directory is
 python data/classification/get_dataset.py --output data/mitdb
 ```
 
-### Clustering dataset
-
-```bash
-python data/clustering/get_dataset.py
-```
-
-The script downloads the Credit Card dataset (`CC GENERAL.csv`) to `data/clustering/CC GENERAL.csv` and `clustering_dataset/CC GENERAL.csv`.
-
 ## Notebook Workflow
 
 Open the `notebooks/` directory in VS Code or Jupyter and run cells from top to bottom.
@@ -131,6 +119,7 @@ Open the `notebooks/` directory in VS Code or Jupyter and run cells from top to 
 
 ---
 
+
 ### Regression
 
 `regression_preprocessing.ipynb` follows this sequence:
@@ -145,26 +134,6 @@ Open the `notebooks/` directory in VS Code or Jupyter and run cells from top to 
 8. Impute missing values, one-hot encode categorical columns, and standardize numeric columns.
 
 The encoder and scaler are fitted on the training set only. The transformed matrices are sparse to keep memory usage manageable.
-
----
-
-### Clustering
-
-`clustering.ipynb` performs comprehensive customer segmentation using credit card transaction behavioral data:
-
-1. **Exploratory Data Analysis (EDA):** Audit missing values (`MINIMUM_PAYMENTS`, `CREDIT_LIMIT`), inspect skewed behavioral distributions, and analyze the feature correlation matrix.
-2. **Preprocessing & Transformation:** Drop account identifiers (`CUST_ID`), impute null values using robust medians, apply logarithmic transformation ($y = \ln(1+x)$) to stabilize variance across heavily skewed monetary columns, and standardize with `StandardScaler`.
-3. **Dimensionality Reduction (PCA):** Compute Scree plot and project standardized 17-dimensional behavioral space into 2D principal components for spatial visualization.
-4. **Algorithm 1 — K-Means Clustering:**
-   - Multi-metric hyperparameter sweep ($k \in [2, 8]$): Elbow curve (WCSS / Inertia), Silhouette score, Davies-Bouldin index, and Calinski-Harabasz score.
-   - Train final model with $k=4$, project centroids into 2D PCA space, and profile behavioral personas (Inactive users, Cash Advance revolvers, VIP premium spenders, Active installment transactors).
-5. **Algorithm 2 — Agglomerative Hierarchical Clustering:**
-   - Construct hierarchical dendrogram using Ward's minimum variance linkage with Euclidean distance.
-   - Fit `AgglomerativeClustering(n_clusters=4, linkage='ward')` and map cluster boundaries in PCA space.
-6. **Performance & Complexity Comparison:**
-   - Quantitative evaluation across Silhouette Score, Davies-Bouldin Index, Calinski-Harabasz Score, and Adjusted Rand Index (ARI).
-   - Analysis of time/space complexity ($O(N \cdot K \cdot d \cdot i)$ vs $O(N^2 \log N)$), memory footprint, and scalability.
-7. **Actionable Marketing & Credit Risk Recommendations:** Tailored strategies for credit limit reviews, reward program targeting, and loan consolidation.
 
 ## Regression Outputs
 
