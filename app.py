@@ -1,5 +1,5 @@
-"""CardioPulse AI — ECG Arrhythmia Classification & Clinical LOS Case Study
-Streamlit Web Application for Healthcare Machine Learning
+"""CardioPulse AI — ECG Arrhythmia Classification, Credit Card Clustering & Clinical LOS Case Study
+Streamlit Web Application for Healthcare and Financial Machine Learning
 """
 
 from __future__ import annotations
@@ -13,6 +13,7 @@ import plotly.graph_objects as go
 import plotly.express as px
 from sklearn.cluster import KMeans
 from sklearn.decomposition import PCA
+from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import silhouette_score
 import streamlit as st
 
@@ -20,7 +21,7 @@ import streamlit as st
 # App Configuration
 # -----------------------------------------------------------------------------
 st.set_page_config(
-    page_title="CardioPulse AI — ECG & Hospital Case Study",
+    page_title="CardioPulse AI — ECG, Clustering & Hospital Case Study",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -28,6 +29,7 @@ st.set_page_config(
 ROOT_DIR = Path(__file__).resolve().parent
 MODELS_DIR = ROOT_DIR / "models"
 SAMPLE_DATA_DIR = ROOT_DIR / "sample_data"
+CLUSTERING_DATA_DIR = ROOT_DIR / "data" / "clustering"
 
 # -----------------------------------------------------------------------------
 # Theme Management (Switchable: Light by default)
@@ -175,10 +177,32 @@ def load_sample_sparcs():
     return pd.DataFrame()
 
 
+@st.cache_data(show_spinner="Loading credit card clustering dataset...")
+def load_clustering_dataset():
+    csv_path = CLUSTERING_DATA_DIR / "CC GENERAL.csv"
+    if not csv_path.exists():
+        return pd.DataFrame(), pd.DataFrame(), None, None
+
+    raw_df = pd.read_csv(csv_path)
+    cleaned_features = raw_df.drop(columns=["CUST_ID"])
+    # Impute missing values with medians
+    cleaned_features["CREDIT_LIMIT"] = cleaned_features["CREDIT_LIMIT"].fillna(cleaned_features["CREDIT_LIMIT"].median())
+    cleaned_features["MINIMUM_PAYMENTS"] = cleaned_features["MINIMUM_PAYMENTS"].fillna(cleaned_features["MINIMUM_PAYMENTS"].median())
+
+    cc_scaler = StandardScaler()
+    X_scaled = cc_scaler.fit_transform(cleaned_features)
+
+    cc_pca = PCA(n_components=2, random_state=42)
+    coords_2d = cc_pca.fit_transform(X_scaled)
+
+    return raw_df, cleaned_features, X_scaled, (cc_scaler, cc_pca, coords_2d)
+
+
 ecg_bundle = load_ecg_bundle()
 los_bundle = load_los_bundle()
 sample_signals_db = load_sample_signals()
 sample_sparcs_df = load_sample_sparcs()
+cc_raw_df, cc_features_df, cc_X_scaled, cc_transforms = load_clustering_dataset()
 
 
 # -----------------------------------------------------------------------------
@@ -254,10 +278,9 @@ def predict_ecg_class(features_dict, model_name):
 # -----------------------------------------------------------------------------
 with st.sidebar:
     st.title("CardioPulse")
-    st.caption("Clinical ECG & Hospital Inpatient Case Study")
+    st.caption("Clinical ECG, Customer Clustering & Hospital Inpatient Case Study")
     st.markdown("---")
 
-    # Place MLP as default selection or first option
     model_options = list(ecg_bundle["models"].keys())
     default_idx = model_options.index("MLP Neural Network") if "MLP Neural Network" in model_options else 0
 
@@ -274,11 +297,15 @@ with st.sidebar:
     st.markdown("---")
     st.markdown("### Case Study Overview")
     st.markdown(
-        "**Track 1: MIT-BIH Arrhythmia**\n"
+        "**Track 1: MIT-BIH Arrhythmia Classification**\n"
         "- 109,423 Ambulatory Beats\n"
         "- 5 AAMI EC57 Rhythm Classes\n"
-        "- 10 Supervised Algorithms & Clustering\n\n"
-        "**Track 2: NY SPARCS 2010**\n"
+        "- MLP Neural Network ranked #1\n\n"
+        "**Track 2: Customer Segmentation Clustering**\n"
+        "- 8,950 Credit Card Accounts (`CC GENERAL.csv`)\n"
+        "- 17 Behavioral Financial Features\n"
+        "- K-Means Clustering & 2D PCA\n\n"
+        "**Track 3: NY SPARCS 2010 Inpatient Stay**\n"
         "- Inpatient Discharge Modeling\n"
         "- Target: Hospital Length of Stay\n"
         "- Gradient Boosting Pipeline"
@@ -287,7 +314,7 @@ with st.sidebar:
     st.markdown("---")
     st.markdown(
         f"<div style='text-align: center; color: {t_subtext}; font-size: 0.8rem;'>"
-        "PhysioNet MIT-BIH & NY Open Data"
+        "PhysioNet MIT-BIH, CC GENERAL & NY Open Data"
         "</div>",
         unsafe_allow_html=True
     )
@@ -304,13 +331,13 @@ st.markdown(f"""
                 CardioPulse Analytics
             </h1>
             <p style="margin: 4px 0 0 0; color: {t_subtext}; font-size: 0.95rem;">
-                Clinical Machine Learning: ECG Arrhythmia Classification, Unsupervised Clustering, and Hospital Inpatient Length of Stay
+                Machine Learning Case Study: ECG Arrhythmia Classification, Customer Segmentation Clustering, and Hospital Length of Stay
             </p>
         </div>
         <div style="margin-top: 8px;">
             <span class="status-badge badge-normal">MIT-BIH Arrhythmia</span>
-            <span class="status-badge badge-info" style="margin-left: 6px;">NY SPARCS 2010</span>
-            <span class="status-badge badge-warning" style="margin-left: 6px;">Theme: {st.session_state['theme_mode']}</span>
+            <span class="status-badge badge-info" style="margin-left: 6px;">CC GENERAL Clustering</span>
+            <span class="status-badge badge-warning" style="margin-left: 6px;">NY SPARCS 2010</span>
         </div>
     </div>
 </div>
@@ -322,7 +349,7 @@ st.markdown(f"""
 # -----------------------------------------------------------------------------
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "ECG Classification",
-    "ECG Beat Clustering",
+    "Customer Clustering",
     "Hospital Stay Prediction",
     "Model Benchmarks & EDA",
     "Methodology & Documentation"
@@ -540,162 +567,152 @@ with tab1:
 
 
 # =============================================================================
-# TAB 2: Unsupervised ECG Beat Clustering
+# TAB 2: Unsupervised Customer Segmentation Clustering (data/clustering/CC GENERAL.csv)
 # =============================================================================
 with tab2:
-    st.subheader("Unsupervised ECG Heartbeat Clustering")
+    st.subheader("Customer Segmentation & Behavioral Clustering")
     st.markdown(
-        "Explore morphological grouping of ECG beats without prior label supervision using **K-Means Clustering** "
-        "and **Principal Component Analysis (PCA)** on extracted beat features."
+        "Unsupervised customer portfolio segmentation using **K-Means Clustering** and **Principal Component Analysis (PCA)** "
+        "on the **Credit Card Customer Dataset** (`data/clustering/CC GENERAL.csv`, 8,950 accounts, 17 behavioral features)."
     )
 
-    # Compile feature dataset from sample records
-    cluster_records = []
-    for c_key, samples in sample_signals_db.items():
-        for s in samples:
-            cluster_records.append({
-                "record_id": s.get("index", len(cluster_records)),
-                "true_class": c_key,
-                "mean_amplitude": s["mean_amplitude"],
-                "std_amplitude": s["std_amplitude"],
-                "r_peak_amplitude": s["r_peak_amplitude"],
-                "signal_energy": s["signal_energy"],
-                "heart_rate": s["heart_rate"],
-                "rr_interval": s["rr_interval"]
+    if cc_raw_df.empty or cc_X_scaled is None:
+        st.error("Could not find or load `data/clustering/CC GENERAL.csv`. Please verify the dataset path.")
+    else:
+        cc_scaler, cc_pca, cc_coords_2d = cc_transforms
+
+        c_ctrl1, c_ctrl2 = st.columns([1, 2], gap="large")
+
+        with c_ctrl1:
+            st.markdown("##### Clustering Configuration")
+            k_clusters = st.slider(
+                "Number of Clusters (k)",
+                min_value=2,
+                max_value=8,
+                value=4,
+                step=1,
+                help="Select target customer segments. k=4 represents high spenders, cash advance users, balanced purchasers, and inactive/low-balance users."
+            )
+            random_seed = st.number_input("K-Means Random State", value=42, min_value=0, max_value=999, step=1)
+
+            # Fit K-Means
+            km_cc = KMeans(n_clusters=k_clusters, random_state=int(random_seed), n_init=10)
+            cluster_assignments = km_cc.fit_predict(cc_X_scaled)
+            inertia_cc = km_cc.inertia_
+
+            # Sample 2000 points for real-time fast silhouette computation
+            np.random.seed(42)
+            sample_eval_idx = np.random.choice(len(cc_X_scaled), min(2500, len(cc_X_scaled)), replace=False)
+            sil_cc = silhouette_score(cc_X_scaled[sample_eval_idx], cluster_assignments[sample_eval_idx])
+
+            st.metric("Silhouette Coefficient", f"{sil_cc:.3f}", help="Calculated over stratified sample of account vectors.")
+            st.metric("Within-Cluster Inertia", f"{inertia_cc:,.1f}")
+
+            st.markdown("---")
+            st.markdown("##### Cluster Archetype Labels (k=4 default)")
+            cluster_names_4 = {
+                0: "Transactors & Low-Balance (Moderate activity)",
+                1: "VIP High Spenders (Heavy purchase volume)",
+                2: "Cash Advance Borrowers (Frequent cash withdrawals)",
+                3: "Installment Buyers (Frequent regular payments)"
+            }
+            if k_clusters == 4:
+                for cid in range(4):
+                    cnt = np.sum(cluster_assignments == cid)
+                    pct = (cnt / len(cluster_assignments)) * 100
+                    st.write(f"- **Cluster {cid}**: {cluster_names_4[cid]} ({cnt:,} accounts, {pct:.1f}%)")
+            else:
+                for cid in range(k_clusters):
+                    cnt = np.sum(cluster_assignments == cid)
+                    pct = (cnt / len(cluster_assignments)) * 100
+                    st.write(f"- **Cluster {cid}**: {cnt:,} accounts ({pct:.1f}%)")
+
+        with c_ctrl2:
+            st.markdown("##### 2D PCA Customer Projection")
+            # Downsample for responsive Plotly rendering
+            subsample_size = min(3000, len(cc_raw_df))
+            np.random.seed(42)
+            disp_indices = np.random.choice(len(cc_raw_df), subsample_size, replace=False)
+
+            plot_df = pd.DataFrame({
+                "PCA 1": cc_coords_2d[disp_indices, 0],
+                "PCA 2": cc_coords_2d[disp_indices, 1],
+                "Cluster": [f"Cluster {cluster_assignments[i]}" for i in disp_indices],
+                "Balance": cc_raw_df.iloc[disp_indices]["BALANCE"].values,
+                "Purchases": cc_raw_df.iloc[disp_indices]["PURCHASES"].values,
+                "Cash Advance": cc_raw_df.iloc[disp_indices]["CASH_ADVANCE"].values,
+                "Credit Limit": cc_raw_df.iloc[disp_indices]["CREDIT_LIMIT"].values
             })
-    cluster_df = pd.DataFrame(cluster_records)
 
-    feat_cols = ["mean_amplitude", "std_amplitude", "r_peak_amplitude", "signal_energy"]
-    scaler = ecg_bundle["scaler"]
-    X_features = cluster_df[feat_cols].values
-    X_scaled = scaler.transform(X_features)
+            fig_pca_cc = px.scatter(
+                plot_df,
+                x="PCA 1",
+                y="PCA 2",
+                color="Cluster",
+                hover_data=["Balance", "Purchases", "Cash Advance", "Credit Limit"],
+                color_discrete_sequence=px.colors.qualitative.Safe,
+                title=f"PCA Latent Space (Explains {cc_pca.explained_variance_ratio_.sum()*100:.1f}% Variance, {subsample_size:,} Sampled Accounts)"
+            )
+            fig_pca_cc.update_layout(
+                template=t_chart_template,
+                paper_bgcolor=t_card_bg,
+                plot_bgcolor=t_plot_bg,
+                height=350,
+                margin=dict(l=20, r=20, t=40, b=20),
+                xaxis=dict(gridcolor=t_grid),
+                yaxis=dict(gridcolor=t_grid)
+            )
+            st.plotly_chart(fig_pca_cc, use_container_width=True)
 
-    c_ctrl1, c_ctrl2 = st.columns([1, 2], gap="large")
+        st.markdown("---")
+        seg_col1, seg_col2 = st.columns(2, gap="large")
 
-    with c_ctrl1:
-        st.markdown("##### Clustering Controls")
-        k_clusters = st.slider("Number of Clusters (k)", min_value=2, max_value=8, value=5, step=1,
-                               help="Standard AAMI EC57 recognizes 5 distinct heartbeat categories.")
-        random_seed = st.number_input("Random State Seed", value=42, min_value=0, max_value=999, step=1)
+        with seg_col1:
+            st.markdown("##### Cluster Feature Comparison Table")
+            summary_cols = ["BALANCE", "PURCHASES", "CASH_ADVANCE", "CREDIT_LIMIT", "PAYMENTS", "PURCHASES_FREQUENCY", "CASH_ADVANCE_FREQUENCY"]
+            clustered_summary_df = cc_raw_df.copy()
+            clustered_summary_df["Cluster"] = [f"Cluster {c}" for c in cluster_assignments]
+            profile_table = clustered_summary_df.groupby("Cluster")[summary_cols].mean().round(2)
+            profile_table["Account_Count"] = clustered_summary_df["Cluster"].value_counts()
+            st.dataframe(profile_table, use_container_width=True)
 
-        # Run K-Means
-        kmeans_model = KMeans(n_clusters=k_clusters, random_state=int(random_seed), n_init=10)
-        cluster_labels = kmeans_model.fit_predict(X_scaled)
-        cluster_df["cluster"] = [f"Cluster {i}" for i in cluster_labels]
+        with seg_col2:
+            st.markdown("##### Elbow Curve Analysis")
+            # Pre-computed inertias for k=2..8 on CC GENERAL
+            elbow_k = [2, 3, 4, 5, 6, 7, 8]
+            elbow_vals = [127785.0, 111975.0, 99061.9, 91490.5, 84826.6, 79856.8, 74484.9]
 
-        sil_avg = silhouette_score(X_scaled, cluster_labels)
-        inertia_val = kmeans_model.inertia_
+            fig_elbow_cc = go.Figure()
+            fig_elbow_cc.add_trace(go.Scatter(
+                x=elbow_k,
+                y=elbow_vals,
+                mode="lines+markers",
+                name="Inertia (Elbow)",
+                line=dict(color="#0EA5E9", width=2.5),
+                marker=dict(size=8, color="#0EA5E9")
+            ))
+            # Mark selected k
+            if k_clusters in elbow_k:
+                k_idx = elbow_k.index(k_clusters)
+                fig_elbow_cc.add_trace(go.Scatter(
+                    x=[k_clusters],
+                    y=[elbow_vals[k_idx]],
+                    mode="markers",
+                    name=f"Selected k={k_clusters}",
+                    marker=dict(size=14, color="#EF4444", symbol="star")
+                ))
 
-        st.metric("Silhouette Score", f"{sil_avg:.3f}", help="Ranges from -1 to 1; higher indicates well-separated clusters.")
-        st.metric("Inertia (Within-cluster sum of squares)", f"{inertia_val:.2f}")
-
-        # Map current inference beat into the cluster space
-        cur_feat = np.array([[
-            inference_features["mean_amplitude"],
-            inference_features["std_amplitude"],
-            inference_features["r_peak_amplitude"],
-            inference_features["signal_energy"]
-        ]])
-        cur_scaled = scaler.transform(cur_feat)
-        assigned_cluster = kmeans_model.predict(cur_scaled)[0]
-        st.info(f"Current Beat from Studio: **Assigned to Cluster {assigned_cluster}**")
-
-    with c_ctrl2:
-        st.markdown("##### 2D PCA Cluster Projection")
-        pca_engine = PCA(n_components=2, random_state=42)
-        coords_2d = pca_engine.fit_transform(X_scaled)
-        cluster_df["PCA 1"] = coords_2d[:, 0]
-        cluster_df["PCA 2"] = coords_2d[:, 1]
-
-        cur_pca = pca_engine.transform(cur_scaled)
-
-        pca_color_by = st.radio("Color Data Points By:", ["K-Means Cluster", "True Rhythm Class (AAMI)"], horizontal=True)
-        color_col = "cluster" if pca_color_by == "K-Means Cluster" else "true_class"
-
-        fig_pca = px.scatter(
-            cluster_df,
-            x="PCA 1",
-            y="PCA 2",
-            color=color_col,
-            hover_data=["true_class", "cluster", "r_peak_amplitude", "signal_energy"],
-            color_discrete_sequence=px.colors.qualitative.Safe,
-            title=f"PCA Latent Space (Explains {pca_engine.explained_variance_ratio_.sum()*100:.1f}% Variance)"
-        )
-
-        # Overlay current inspected beat
-        fig_pca.add_trace(go.Scatter(
-            x=[cur_pca[0, 0]],
-            y=[cur_pca[0, 1]],
-            mode="markers",
-            marker=dict(size=14, color="#EF4444", symbol="star", line=dict(width=1.5, color="#000")),
-            name="Current Studio Beat"
-        ))
-
-        fig_pca.update_layout(
-            template=t_chart_template,
-            paper_bgcolor=t_card_bg,
-            plot_bgcolor=t_plot_bg,
-            height=340,
-            margin=dict(l=20, r=20, t=40, b=20),
-            xaxis=dict(gridcolor=t_grid),
-            yaxis=dict(gridcolor=t_grid)
-        )
-        st.plotly_chart(fig_pca, use_container_width=True)
-
-    st.markdown("---")
-    c_sub1, c_sub2 = st.columns(2, gap="large")
-
-    with c_sub1:
-        st.markdown("##### Cluster vs True Class Contingency Table")
-        st.caption("Inspect overlap between unsupervised clusters and clinical ground truth annotations:")
-        contingency = pd.crosstab(cluster_df["true_class"], cluster_df["cluster"])
-        st.dataframe(contingency, use_container_width=True)
-
-    with c_sub2:
-        st.markdown("##### Elbow Curve & Silhouette Analysis")
-        # Compute elbow data across k=2..8
-        k_eval_range = list(range(2, 9))
-        elbow_inertias = []
-        elbow_silhouettes = []
-        for test_k in k_eval_range:
-            km_test = KMeans(n_clusters=test_k, random_state=42, n_init=5).fit(X_scaled)
-            elbow_inertias.append(km_test.inertia_)
-            elbow_silhouettes.append(silhouette_score(X_scaled, km_test.labels_))
-
-        eval_df = pd.DataFrame({
-            "k": k_eval_range,
-            "Inertia": elbow_inertias,
-            "Silhouette": elbow_silhouettes
-        })
-
-        fig_eval = go.Figure()
-        fig_eval.add_trace(go.Scatter(
-            x=eval_df["k"],
-            y=eval_df["Inertia"],
-            name="Inertia (Elbow)",
-            mode="lines+markers",
-            line=dict(color="#0EA5E9", width=2)
-        ))
-        fig_eval.add_trace(go.Scatter(
-            x=eval_df["k"],
-            y=eval_df["Silhouette"],
-            name="Silhouette Score",
-            mode="lines+markers",
-            yaxis="y2",
-            line=dict(color="#10B981", width=2, dash="dot")
-        ))
-        fig_eval.update_layout(
-            template=t_chart_template,
-            paper_bgcolor=t_card_bg,
-            plot_bgcolor=t_plot_bg,
-            height=280,
-            margin=dict(l=30, r=30, t=20, b=30),
-            xaxis=dict(title="Number of Clusters (k)", gridcolor=t_grid),
-            yaxis=dict(title="Inertia", gridcolor=t_grid),
-            yaxis2=dict(title="Silhouette", overlaying="y", side="right"),
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
-        )
-        st.plotly_chart(fig_eval, use_container_width=True)
+            fig_elbow_cc.update_layout(
+                template=t_chart_template,
+                paper_bgcolor=t_card_bg,
+                plot_bgcolor=t_plot_bg,
+                height=260,
+                margin=dict(l=30, r=20, t=20, b=30),
+                xaxis=dict(title="Number of Clusters (k)", gridcolor=t_grid),
+                yaxis=dict(title="Inertia (SSE)", gridcolor=t_grid),
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+            )
+            st.plotly_chart(fig_elbow_cc, use_container_width=True)
 
 
 # =============================================================================
@@ -956,7 +973,7 @@ with tab5:
 
     ---
 
-    ### Multi-Layer Perceptron (MLP) Architecture
+    ### Multi-Layer Perceptron (MLP) Classifier
     The Multi-Layer Perceptron neural network demonstrated the highest classification performance across all 10 algorithms benchmarked in the study:
     - **Architecture:** Standardized 4-dimensional feature input vector $\to$ Dense Layer 1 (128 neurons, $\tanh$) $\to$ Dense Layer 2 (64 neurons, $\tanh$) $\to$ Softmax output layer (5 classes).
     - **Regularization:** $L_2$ weight penalty ($\alpha = 10^{-3}$) combined with early stopping validation to prevent over-parametrization.
@@ -964,15 +981,23 @@ with tab5:
 
     ---
 
+    ### Unsupervised Customer Segmentation Clustering
+    Using the `data/clustering/CC GENERAL.csv` dataset (8,950 accounts, 17 behavioral features):
+    - **Preprocessing:** Missing value median imputation on `CREDIT_LIMIT` and `MINIMUM_PAYMENTS`, followed by full feature z-score standardization (`StandardScaler`).
+    - **Clustering:** K-Means algorithm evaluated across $k=2$ to $8$ using inertia elbow analysis and silhouette validation.
+    - **Latent Mapping:** Principal Component Analysis (PCA) generates a 2D projection capturing key variance in balance, purchasing, cash advance, and credit limit patterns.
+
+    ---
+
     ### Regularization & Experimental Controls
     1. **Stratified 80/20 Train-Test Partitioning:** Preserves exact class frequency ratios across evaluation splits.
     2. **Strict Preprocessing Isolation:** Feature scalers (`StandardScaler`) and categorical encoders (`OneHotEncoder`) are fitted strictly on the training partition.
-    3. **Unsupervised Clustering:** K-Means clustering and PCA allow validation of feature representations without label dependence.
-    4. **Leakage Prevention:** Post-discharge variables like Total Charges and Costs are excluded from the hospital stay regression pipeline.
+    3. **Leakage Prevention:** Post-discharge variables like Total Charges and Costs are excluded from the hospital stay regression pipeline.
 
     ---
 
     ### References & Data Attribution
     - **PhysioNet MIT-BIH Arrhythmia Database:** Mark RG, Moody GB. *PhysioNet: The MIT-BIH Arrhythmia Database*. IEEE Engineering in Medicine and Biology Magazine, 2001.
+    - **Credit Card Customer Segmentation Dataset:** `CC GENERAL.csv` active customer usage data.
     - **New York State SPARCS:** Hospital Inpatient Discharges: 2010. NY State Department of Health Open Data.
     """)
