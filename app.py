@@ -11,6 +11,9 @@ import pandas as pd
 import joblib
 import plotly.graph_objects as go
 import plotly.express as px
+from sklearn.cluster import KMeans
+from sklearn.decomposition import PCA
+from sklearn.metrics import silhouette_score
 import streamlit as st
 
 # -----------------------------------------------------------------------------
@@ -18,7 +21,6 @@ import streamlit as st
 # -----------------------------------------------------------------------------
 st.set_page_config(
     page_title="CardioPulse AI — ECG & Hospital Case Study",
-    page_icon="🫀",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -27,67 +29,111 @@ ROOT_DIR = Path(__file__).resolve().parent
 MODELS_DIR = ROOT_DIR / "models"
 SAMPLE_DATA_DIR = ROOT_DIR / "sample_data"
 
-# Custom Styling (Dark Medical Dashboard Aesthetics)
-st.markdown("""
+# -----------------------------------------------------------------------------
+# Theme Management (Switchable: Light by default)
+# -----------------------------------------------------------------------------
+if "theme_mode" not in st.session_state:
+    st.session_state["theme_mode"] = "Light"
+
+with st.sidebar:
+    st.markdown("### Settings")
+    selected_theme = st.radio(
+        "Appearance Theme",
+        options=["Light", "Dark"],
+        index=0 if st.session_state["theme_mode"] == "Light" else 1,
+        horizontal=True,
+        help="Select between clean light clinical aesthetic and dark mode."
+    )
+    st.session_state["theme_mode"] = selected_theme
+
+is_dark = st.session_state["theme_mode"] == "Dark"
+
+# Theme-specific color palette
+if is_dark:
+    t_bg = "#0F172A"
+    t_card_bg = "#1E293B"
+    t_border = "rgba(255, 255, 255, 0.08)"
+    t_text = "#F8FAFC"
+    t_subtext = "#94A3B8"
+    t_accent = "#10B981"
+    t_chart_template = "plotly_dark"
+    t_plot_bg = "#0F172A"
+    t_grid = "rgba(255, 255, 255, 0.08)"
+else:
+    t_bg = "#F8FAFC"
+    t_card_bg = "#FFFFFF"
+    t_border = "#E2E8F0"
+    t_text = "#0F172A"
+    t_subtext = "#64748B"
+    t_accent = "#059669"
+    t_chart_template = "plotly_white"
+    t_plot_bg = "#FFFFFF"
+    t_grid = "#F1F5F9"
+
+# Clean CSS without excessive icons or clunky decorations
+st.markdown(f"""
 <style>
     /* Metric Cards */
-    div[data-testid="stMetricValue"] {
-        font-size: 1.8rem !important;
+    div[data-testid="stMetricValue"] {{
+        font-size: 1.6rem !important;
         font-weight: 700;
-        color: #00D26A;
-    }
-    .metric-card {
-        background: #1A1F2C;
-        border-radius: 12px;
-        padding: 18px 22px;
-        border: 1px solid rgba(255, 255, 255, 0.08);
-        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
-        margin-bottom: 15px;
-    }
-    .status-badge {
+        color: {t_accent};
+    }}
+    .metric-card {{
+        background: {t_card_bg};
+        border-radius: 8px;
+        padding: 16px 20px;
+        border: 1px solid {t_border};
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+        margin-bottom: 14px;
+        color: {t_text};
+    }}
+    .status-badge {{
         display: inline-block;
-        padding: 6px 14px;
-        border-radius: 20px;
+        padding: 4px 12px;
+        border-radius: 6px;
         font-weight: 600;
-        font-size: 0.85rem;
-        letter-spacing: 0.5px;
+        font-size: 0.82rem;
+        letter-spacing: 0.3px;
         text-transform: uppercase;
-    }
-    .badge-normal {
-        background: rgba(0, 210, 106, 0.15);
-        color: #00D26A;
-        border: 1px solid #00D26A;
-    }
-    .badge-warning {
-        background: rgba(255, 179, 0, 0.15);
-        color: #FFB300;
-        border: 1px solid #FFB300;
-    }
-    .badge-danger {
-        background: rgba(255, 75, 75, 0.15);
-        color: #FF4B4B;
-        border: 1px solid #FF4B4B;
-    }
-    .badge-info {
-        background: rgba(0, 173, 237, 0.15);
-        color: #00ADED;
-        border: 1px solid #00ADED;
-    }
-    .hero-banner {
-        background: linear-gradient(135deg, #111827 0%, #1F2937 50%, #111827 100%);
-        border: 1px solid rgba(0, 210, 106, 0.25);
-        border-radius: 14px;
-        padding: 24px 28px;
-        margin-bottom: 25px;
-    }
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 8px;
-    }
-    .stTabs [data-baseweb="tab"] {
-        border-radius: 8px 8px 0 0;
-        padding: 10px 20px;
+    }}
+    .badge-normal {{
+        background: rgba(16, 185, 129, 0.12);
+        color: #059669;
+        border: 1px solid rgba(16, 185, 129, 0.3);
+    }}
+    .badge-warning {{
+        background: rgba(245, 158, 11, 0.12);
+        color: #D97706;
+        border: 1px solid rgba(245, 158, 11, 0.3);
+    }}
+    .badge-danger {{
+        background: rgba(239, 68, 68, 0.12);
+        color: #DC2626;
+        border: 1px solid rgba(239, 68, 68, 0.3);
+    }}
+    .badge-info {{
+        background: rgba(14, 165, 233, 0.12);
+        color: #0284C7;
+        border: 1px solid rgba(14, 165, 233, 0.3);
+    }}
+    .hero-banner {{
+        background: {t_card_bg};
+        border: 1px solid {t_border};
+        border-radius: 8px;
+        padding: 20px 24px;
+        margin-bottom: 20px;
+    }}
+    .stTabs [data-baseweb="tab-list"] {{
+        gap: 6px;
+        border-bottom: 1px solid {t_border};
+    }}
+    .stTabs [data-baseweb="tab"] {{
+        border-radius: 6px 6px 0 0;
+        padding: 8px 16px;
         font-weight: 600;
-    }
+        font-size: 0.95rem;
+    }}
 </style>
 """, unsafe_allow_html=True)
 
@@ -99,7 +145,6 @@ st.markdown("""
 def load_ecg_bundle():
     bundle_path = MODELS_DIR / "ecg_classifier_bundle.joblib"
     if not bundle_path.exists():
-        # Fallback: run training script if bundle is missing
         from scripts.train_and_export_models import train_ecg_classifiers
         train_ecg_classifiers()
     return joblib.load(bundle_path)
@@ -142,17 +187,11 @@ sample_sparcs_df = load_sample_sparcs()
 def synthesize_ecg(heart_rate=75, r_peak_amp=1.2, noise_level=0.03, points=300):
     """Synthesize a canonical P-Q-R-S-T ECG window of 300 points centered at index 150."""
     t = np.linspace(-1.0, 1.0, points)
-    # R-peak centered at 0 (index 150)
     r_wave = r_peak_amp * np.exp(-((t) ** 2) / 0.0015)
-    # Q wave (negative deflection right before R)
     q_wave = -0.15 * r_peak_amp * np.exp(-((t + 0.08) ** 2) / 0.001)
-    # S wave (negative deflection right after R)
     s_wave = -0.25 * r_peak_amp * np.exp(-((t - 0.08) ** 2) / 0.0012)
-    # P wave (atrial depolarization)
     p_wave = 0.2 * np.exp(-((t + 0.35) ** 2) / 0.008)
-    # T wave (ventricular repolarization)
     t_wave = 0.35 * np.exp(-((t - 0.40) ** 2) / 0.015)
-    
     baseline = 0.02 * np.sin(2 * np.pi * 0.5 * t)
     noise = np.random.normal(0, noise_level, points) if noise_level > 0 else 0
     signal = r_wave + q_wave + s_wave + p_wave + t_wave + baseline + noise
@@ -163,7 +202,6 @@ def extract_signal_features(signal_array: np.ndarray):
     """Extract standard features matching the case study feature vector."""
     signal = np.asarray(signal_array, dtype=float)
     if len(signal) != 300:
-        # Interpolate or slice to 300 points
         orig_indices = np.linspace(0, 1, len(signal))
         new_indices = np.linspace(0, 1, 300)
         signal = np.interp(new_indices, orig_indices, signal)
@@ -215,24 +253,31 @@ def predict_ecg_class(features_dict, model_name):
 # Sidebar Navigation & Settings
 # -----------------------------------------------------------------------------
 with st.sidebar:
-    st.image("https://img.icons8.com/fluency/96/heart-with-pulse.png", width=64)
-    st.title("CardioPulse AI")
+    st.title("CardioPulse")
     st.caption("Clinical ECG & Hospital Inpatient Case Study")
     st.markdown("---")
 
+    # Place MLP as default selection or first option
+    model_options = list(ecg_bundle["models"].keys())
+    default_idx = model_options.index("MLP Neural Network") if "MLP Neural Network" in model_options else 0
+
     selected_model = st.selectbox(
-        "🧠 Primary Classifier Model",
-        options=list(ecg_bundle["models"].keys()),
-        index=0,
-        help="Select which regularized model algorithm processes the ECG signals."
+        "Primary Classifier Model",
+        options=model_options,
+        index=default_idx,
+        help="Select which regularized model algorithm processes the ECG signals. MLP Neural Network ranked #1 among all 10 evaluated algorithms."
     )
 
-    st.markdown("### 📋 Case Study Overview")
-    st.info(
+    if selected_model == "MLP Neural Network":
+        st.success("Selected Top Performer: MLP Neural Network (91.45% Acc, 0.9073 Weighted F1)")
+
+    st.markdown("---")
+    st.markdown("### Case Study Overview")
+    st.markdown(
         "**Track 1: MIT-BIH Arrhythmia**\n"
         "- 109,423 Ambulatory Beats\n"
         "- 5 AAMI EC57 Rhythm Classes\n"
-        "- 5-Fold Regularized Tuning\n\n"
+        "- 10 Supervised Algorithms & Clustering\n\n"
         "**Track 2: NY SPARCS 2010**\n"
         "- Inpatient Discharge Modeling\n"
         "- Target: Hospital Length of Stay\n"
@@ -241,8 +286,8 @@ with st.sidebar:
 
     st.markdown("---")
     st.markdown(
-        "<div style='text-align: center; color: #888; font-size: 0.8rem;'>"
-        "Designed for Streamlit Community Cloud<br>PhysioNet & NY Open Data"
+        f"<div style='text-align: center; color: {t_subtext}; font-size: 0.8rem;'>"
+        "PhysioNet MIT-BIH & NY Open Data"
         "</div>",
         unsafe_allow_html=True
     )
@@ -251,21 +296,21 @@ with st.sidebar:
 # -----------------------------------------------------------------------------
 # Header / Hero Section
 # -----------------------------------------------------------------------------
-st.markdown("""
+st.markdown(f"""
 <div class="hero-banner">
     <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap;">
         <div>
-            <h1 style="margin: 0; font-size: 2.1rem; color: #FAFAFA; display: flex; align-items: center; gap: 10px;">
-                <span>🫀 CardioPulse AI</span>
+            <h1 style="margin: 0; font-size: 1.8rem; color: {t_text}; font-weight: 700;">
+                CardioPulse Analytics
             </h1>
-            <p style="margin: 6px 0 0 0; color: #9CA3AF; font-size: 1.05rem;">
-                Machine Learning Case Study: ECG Arrhythmia Classification & Hospital Inpatient Length-of-Stay
+            <p style="margin: 4px 0 0 0; color: {t_subtext}; font-size: 0.95rem;">
+                Clinical Machine Learning: ECG Arrhythmia Classification, Unsupervised Clustering, and Hospital Inpatient Length of Stay
             </p>
         </div>
-        <div style="margin-top: 10px;">
+        <div style="margin-top: 8px;">
             <span class="status-badge badge-normal">MIT-BIH Arrhythmia</span>
             <span class="status-badge badge-info" style="margin-left: 6px;">NY SPARCS 2010</span>
-            <span class="status-badge badge-warning" style="margin-left: 6px;">Anti-Overfitting</span>
+            <span class="status-badge badge-warning" style="margin-left: 6px;">Theme: {st.session_state['theme_mode']}</span>
         </div>
     </div>
 </div>
@@ -273,13 +318,14 @@ st.markdown("""
 
 
 # -----------------------------------------------------------------------------
-# Navigation Tabs
+# Navigation Tabs (Clean labels without heavy icons)
 # -----------------------------------------------------------------------------
-tab1, tab2, tab3, tab4 = st.tabs([
-    "🫀 ECG Waveform Studio",
-    "🏥 Hospital Stay Predictor",
-    "📊 Benchmarks & EDA",
-    "📘 Case Study Documentation"
+tab1, tab2, tab3, tab4, tab5 = st.tabs([
+    "ECG Classification",
+    "ECG Beat Clustering",
+    "Hospital Stay Prediction",
+    "Model Benchmarks & EDA",
+    "Methodology & Documentation"
 ])
 
 
@@ -304,7 +350,7 @@ with tab1:
 
         if input_mode == "Preset Clinical Beats (MIT-BIH)":
             class_choice = st.selectbox(
-                "Select Heartbeat Rhythm Type (AAMI Class)",
+                "Heartbeat Rhythm Type (AAMI Class)",
                 options=["N - Normal Sinus Beat", "V - Ventricular Ectopic (PVC)", "S - Supraventricular Ectopic", "F - Fusion Beat", "Q - Unknown / Paced Beat"],
                 index=0
             )
@@ -339,12 +385,12 @@ with tab1:
                     else:
                         uploaded_df = pd.read_csv(uploaded_file, header=None)
                         current_signal = uploaded_df.values.flatten()
-                    st.success(f"Loaded signal with {len(current_signal)} samples!")
+                    st.success(f"Loaded signal with {len(current_signal)} samples.")
                 except Exception as e:
                     st.error(f"Error parsing uploaded file: {e}")
                     current_signal = synthesize_ecg()
             else:
-                st.info("No file uploaded yet. Showing standard normal heartbeat sample.")
+                st.info("No file uploaded. Displaying default normal sinus heartbeat sample.")
                 current_signal = synthesize_ecg()
 
         # Extract features
@@ -361,12 +407,11 @@ with tab1:
             st.metric("Std Deviation", f"{extracted['std_amplitude']:.3f}")
 
         st.markdown("---")
-        st.subheader("3. Fine-Tune Feature Parameters")
-        st.caption("Adjust extracted features interactively to test decision boundaries:")
+        st.subheader("3. Interactive Feature Adjustment")
+        st.caption("Fine-tune values to examine model decision boundaries:")
         adj_r_peak = st.slider("R-Peak Amplitude (mV)", -1.0, 4.0, float(extracted["r_peak_amplitude"]), 0.05)
         adj_energy = st.slider("Signal Energy", 0.0, 200.0, float(extracted["signal_energy"]), 1.0)
 
-        # Update features with adjusted values
         inference_features = {
             "mean_amplitude": extracted["mean_amplitude"],
             "std_amplitude": extracted["std_amplitude"],
@@ -376,11 +421,10 @@ with tab1:
         }
 
     with col_viz:
-        st.subheader("Interactive ECG Waveform (300 Samples Centered on R-Peak)")
+        st.subheader("ECG Waveform (300 Samples Centered on R-Peak)")
 
-        # Plot ECG Waveform with Plotly
         samples_x = np.arange(len(current_signal))
-        time_sec = (samples_x - 150) / 360.0  # MIT-BIH 360Hz sampling rate
+        time_sec = (samples_x - 150) / 360.0
 
         fig = go.Figure()
 
@@ -389,42 +433,39 @@ with tab1:
             x=time_sec,
             y=current_signal,
             mode="lines",
-            name="ECG Lead MLII",
-            line=dict(color="#00D26A", width=2.5),
+            name="Lead MLII",
+            line=dict(color=t_accent, width=2.2),
             hovertemplate="Time: %{x:.3f}s<br>Voltage: %{y:.3f} mV<extra></extra>"
         ))
 
-        # Highlight R-Peak at sample 150 (t=0)
+        # R-Peak marker
         r_val = current_signal[150]
         fig.add_trace(go.Scatter(
             x=[0],
             y=[r_val],
             mode="markers+text",
             name="R-Peak (t=0s)",
-            marker=dict(color="#FF4B4B", size=11, symbol="diamond"),
+            marker=dict(color="#EF4444", size=9, symbol="diamond"),
             text=["R-Peak"],
             textposition="top center",
-            textfont=dict(color="#FAFAFA", size=12)
+            textfont=dict(color=t_text, size=11)
         ))
 
-        # Annotate standard clinical segments
-        fig.add_vrect(x0=-0.06, x1=0.06, fillcolor="rgba(255, 75, 75, 0.08)", layer="below", line_width=0, annotation_text="QRS", annotation_position="bottom right")
+        fig.add_vrect(x0=-0.06, x1=0.06, fillcolor="rgba(239, 68, 68, 0.08)", layer="below", line_width=0, annotation_text="QRS", annotation_position="bottom right")
 
         fig.update_layout(
-            template="plotly_dark",
-            paper_bgcolor="#1A1F2C",
-            plot_bgcolor="#111827",
+            template=t_chart_template,
+            paper_bgcolor=t_card_bg,
+            plot_bgcolor=t_plot_bg,
             margin=dict(l=40, r=20, t=30, b=40),
-            height=340,
+            height=320,
             xaxis=dict(
                 title="Time relative to R-peak (seconds)",
-                gridcolor="rgba(255, 255, 255, 0.08)",
-                zerolinecolor="rgba(255, 255, 255, 0.15)"
+                gridcolor=t_grid
             ),
             yaxis=dict(
                 title="Amplitude (mV)",
-                gridcolor="rgba(255, 255, 255, 0.08)",
-                zerolinecolor="rgba(255, 255, 255, 0.15)"
+                gridcolor=t_grid
             ),
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
         )
@@ -436,32 +477,31 @@ with tab1:
         class_desc = ecg_bundle["class_descriptions"].get(pred_class, "Arrhythmia Classification")
         risk_level, clinical_note = ecg_bundle["class_risk"].get(pred_class, ("Unknown", "Further clinical evaluation required."))
 
-        # Prediction Summary Banner
         badge_style = "badge-normal" if pred_class == "N" else ("badge-danger" if pred_class in ["V", "F"] else "badge-warning")
 
         st.markdown(f"""
         <div class="metric-card">
             <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap;">
                 <div>
-                    <span style="font-size: 0.85rem; color: #9CA3AF; text-transform: uppercase; letter-spacing: 1px;">Model Prediction ({selected_model})</span>
-                    <h2 style="margin: 4px 0; color: #FAFAFA;">Class [{pred_class}]: {class_desc}</h2>
+                    <span style="font-size: 0.82rem; color: {t_subtext}; text-transform: uppercase; letter-spacing: 0.5px;">Classifier: {selected_model}</span>
+                    <h3 style="margin: 4px 0; color: {t_text}; font-size: 1.3rem;">Class [{pred_class}]: {class_desc}</h3>
                     <span class="status-badge {badge_style}">{risk_level}</span>
                     {f'<span class="status-badge badge-info" style="margin-left: 8px;">Ground Truth: {true_label}</span>' if true_label else ''}
                 </div>
-                <div style="text-align: right; margin-top: 8px;">
-                    <span style="color: #9CA3AF; font-size: 0.85rem;">Estimated Rhythm</span>
-                    <div style="font-size: 1.5rem; font-weight: 700; color: #00D26A;">{est_hr:.1f} <span style="font-size: 0.9rem; color: #9CA3AF;">BPM</span></div>
-                    <span style="color: #6B7280; font-size: 0.8rem;">RR-Interval: {est_rr:.3f}s</span>
+                <div style="text-align: right; margin-top: 6px;">
+                    <span style="color: {t_subtext}; font-size: 0.82rem;">Estimated Rhythm</span>
+                    <div style="font-size: 1.4rem; font-weight: 700; color: {t_accent};">{est_hr:.1f} <span style="font-size: 0.85rem; color: {t_subtext};">BPM</span></div>
+                    <span style="color: {t_subtext}; font-size: 0.8rem;">RR-Interval: {est_rr:.3f}s</span>
                 </div>
             </div>
-            <p style="margin: 14px 0 0 0; color: #D1D5DB; font-size: 0.95rem; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 10px;">
-                💡 <strong>Clinical Guidance:</strong> {clinical_note}
+            <p style="margin: 12px 0 0 0; color: {t_text}; font-size: 0.9rem; border-top: 1px solid {t_border}; padding-top: 8px;">
+                <strong>Clinical Notes:</strong> {clinical_note}
             </p>
         </div>
         """, unsafe_allow_html=True)
 
-        # Probabilities Bar Chart
-        st.markdown("#### Multi-Class Probability Distribution")
+        # Probabilities Horizontal Bar Chart
+        st.markdown("##### Multi-Class Probability Distribution")
         prob_df = pd.DataFrame({
             "Class": list(class_probs.keys()),
             "Probability": [class_probs[c] for c in class_probs.keys()],
@@ -469,11 +509,11 @@ with tab1:
         })
 
         color_map = {
-            "N": "#00D26A",
-            "S": "#FFB300",
-            "V": "#FF4B4B",
-            "F": "#FF7043",
-            "Q": "#00ADED"
+            "N": "#10B981",
+            "S": "#F59E0B",
+            "V": "#EF4444",
+            "F": "#F97316",
+            "Q": "#0EA5E9"
         }
 
         fig_prob = px.bar(
@@ -487,41 +527,199 @@ with tab1:
             hover_data={"Description": True, "Probability": ":.3f"}
         )
         fig_prob.update_layout(
-            template="plotly_dark",
-            paper_bgcolor="#1A1F2C",
-            plot_bgcolor="#111827",
-            height=220,
+            template=t_chart_template,
+            paper_bgcolor=t_card_bg,
+            plot_bgcolor=t_plot_bg,
+            height=200,
             margin=dict(l=20, r=20, t=10, b=30),
-            xaxis=dict(range=[0, 1.05], title="Predicted Probability", gridcolor="rgba(255, 255, 255, 0.08)"),
-            yaxis=dict(title="AAMI Class"),
+            xaxis=dict(range=[0, 1.05], title="Predicted Probability", gridcolor=t_grid),
+            yaxis=dict(title="Class"),
             showlegend=False
         )
         st.plotly_chart(fig_prob, use_container_width=True)
 
 
 # =============================================================================
-# TAB 2: Hospital Inpatient Length of Stay (LOS) Predictor
+# TAB 2: Unsupervised ECG Beat Clustering
 # =============================================================================
 with tab2:
-    st.subheader("🏥 Hospital Inpatient Length of Stay (LOS) Prediction")
+    st.subheader("Unsupervised ECG Heartbeat Clustering")
     st.markdown(
-        "Predict estimated inpatient duration using clinical admission risk parameters "
+        "Explore morphological grouping of ECG beats without prior label supervision using **K-Means Clustering** "
+        "and **Principal Component Analysis (PCA)** on extracted beat features."
+    )
+
+    # Compile feature dataset from sample records
+    cluster_records = []
+    for c_key, samples in sample_signals_db.items():
+        for s in samples:
+            cluster_records.append({
+                "record_id": s.get("index", len(cluster_records)),
+                "true_class": c_key,
+                "mean_amplitude": s["mean_amplitude"],
+                "std_amplitude": s["std_amplitude"],
+                "r_peak_amplitude": s["r_peak_amplitude"],
+                "signal_energy": s["signal_energy"],
+                "heart_rate": s["heart_rate"],
+                "rr_interval": s["rr_interval"]
+            })
+    cluster_df = pd.DataFrame(cluster_records)
+
+    feat_cols = ["mean_amplitude", "std_amplitude", "r_peak_amplitude", "signal_energy"]
+    scaler = ecg_bundle["scaler"]
+    X_features = cluster_df[feat_cols].values
+    X_scaled = scaler.transform(X_features)
+
+    c_ctrl1, c_ctrl2 = st.columns([1, 2], gap="large")
+
+    with c_ctrl1:
+        st.markdown("##### Clustering Controls")
+        k_clusters = st.slider("Number of Clusters (k)", min_value=2, max_value=8, value=5, step=1,
+                               help="Standard AAMI EC57 recognizes 5 distinct heartbeat categories.")
+        random_seed = st.number_input("Random State Seed", value=42, min_value=0, max_value=999, step=1)
+
+        # Run K-Means
+        kmeans_model = KMeans(n_clusters=k_clusters, random_state=int(random_seed), n_init=10)
+        cluster_labels = kmeans_model.fit_predict(X_scaled)
+        cluster_df["cluster"] = [f"Cluster {i}" for i in cluster_labels]
+
+        sil_avg = silhouette_score(X_scaled, cluster_labels)
+        inertia_val = kmeans_model.inertia_
+
+        st.metric("Silhouette Score", f"{sil_avg:.3f}", help="Ranges from -1 to 1; higher indicates well-separated clusters.")
+        st.metric("Inertia (Within-cluster sum of squares)", f"{inertia_val:.2f}")
+
+        # Map current inference beat into the cluster space
+        cur_feat = np.array([[
+            inference_features["mean_amplitude"],
+            inference_features["std_amplitude"],
+            inference_features["r_peak_amplitude"],
+            inference_features["signal_energy"]
+        ]])
+        cur_scaled = scaler.transform(cur_feat)
+        assigned_cluster = kmeans_model.predict(cur_scaled)[0]
+        st.info(f"Current Beat from Studio: **Assigned to Cluster {assigned_cluster}**")
+
+    with c_ctrl2:
+        st.markdown("##### 2D PCA Cluster Projection")
+        pca_engine = PCA(n_components=2, random_state=42)
+        coords_2d = pca_engine.fit_transform(X_scaled)
+        cluster_df["PCA 1"] = coords_2d[:, 0]
+        cluster_df["PCA 2"] = coords_2d[:, 1]
+
+        cur_pca = pca_engine.transform(cur_scaled)
+
+        pca_color_by = st.radio("Color Data Points By:", ["K-Means Cluster", "True Rhythm Class (AAMI)"], horizontal=True)
+        color_col = "cluster" if pca_color_by == "K-Means Cluster" else "true_class"
+
+        fig_pca = px.scatter(
+            cluster_df,
+            x="PCA 1",
+            y="PCA 2",
+            color=color_col,
+            hover_data=["true_class", "cluster", "r_peak_amplitude", "signal_energy"],
+            color_discrete_sequence=px.colors.qualitative.Safe,
+            title=f"PCA Latent Space (Explains {pca_engine.explained_variance_ratio_.sum()*100:.1f}% Variance)"
+        )
+
+        # Overlay current inspected beat
+        fig_pca.add_trace(go.Scatter(
+            x=[cur_pca[0, 0]],
+            y=[cur_pca[0, 1]],
+            mode="markers",
+            marker=dict(size=14, color="#EF4444", symbol="star", line=dict(width=1.5, color="#000")),
+            name="Current Studio Beat"
+        ))
+
+        fig_pca.update_layout(
+            template=t_chart_template,
+            paper_bgcolor=t_card_bg,
+            plot_bgcolor=t_plot_bg,
+            height=340,
+            margin=dict(l=20, r=20, t=40, b=20),
+            xaxis=dict(gridcolor=t_grid),
+            yaxis=dict(gridcolor=t_grid)
+        )
+        st.plotly_chart(fig_pca, use_container_width=True)
+
+    st.markdown("---")
+    c_sub1, c_sub2 = st.columns(2, gap="large")
+
+    with c_sub1:
+        st.markdown("##### Cluster vs True Class Contingency Table")
+        st.caption("Inspect overlap between unsupervised clusters and clinical ground truth annotations:")
+        contingency = pd.crosstab(cluster_df["true_class"], cluster_df["cluster"])
+        st.dataframe(contingency, use_container_width=True)
+
+    with c_sub2:
+        st.markdown("##### Elbow Curve & Silhouette Analysis")
+        # Compute elbow data across k=2..8
+        k_eval_range = list(range(2, 9))
+        elbow_inertias = []
+        elbow_silhouettes = []
+        for test_k in k_eval_range:
+            km_test = KMeans(n_clusters=test_k, random_state=42, n_init=5).fit(X_scaled)
+            elbow_inertias.append(km_test.inertia_)
+            elbow_silhouettes.append(silhouette_score(X_scaled, km_test.labels_))
+
+        eval_df = pd.DataFrame({
+            "k": k_eval_range,
+            "Inertia": elbow_inertias,
+            "Silhouette": elbow_silhouettes
+        })
+
+        fig_eval = go.Figure()
+        fig_eval.add_trace(go.Scatter(
+            x=eval_df["k"],
+            y=eval_df["Inertia"],
+            name="Inertia (Elbow)",
+            mode="lines+markers",
+            line=dict(color="#0EA5E9", width=2)
+        ))
+        fig_eval.add_trace(go.Scatter(
+            x=eval_df["k"],
+            y=eval_df["Silhouette"],
+            name="Silhouette Score",
+            mode="lines+markers",
+            yaxis="y2",
+            line=dict(color="#10B981", width=2, dash="dot")
+        ))
+        fig_eval.update_layout(
+            template=t_chart_template,
+            paper_bgcolor=t_card_bg,
+            plot_bgcolor=t_plot_bg,
+            height=280,
+            margin=dict(l=30, r=30, t=20, b=30),
+            xaxis=dict(title="Number of Clusters (k)", gridcolor=t_grid),
+            yaxis=dict(title="Inertia", gridcolor=t_grid),
+            yaxis2=dict(title="Silhouette", overlaying="y", side="right"),
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+        )
+        st.plotly_chart(fig_eval, use_container_width=True)
+
+
+# =============================================================================
+# TAB 3: Hospital Inpatient Length of Stay (LOS) Predictor
+# =============================================================================
+with tab3:
+    st.subheader("Hospital Inpatient Length of Stay (LOS) Prediction")
+    st.markdown(
+        "Estimate inpatient stay duration using clinical admission risk parameters "
         "trained on the **New York SPARCS Inpatient Discharges** dataset."
     )
 
     if los_bundle is None:
-        st.warning("Hospital Length of Stay model bundle is currently generating. Please refresh in a moment.")
+        st.warning("Hospital Length of Stay model bundle is currently unavailable.")
     else:
         los_pipeline = los_bundle["pipeline"]
         feature_options = los_bundle["feature_options"]
 
-        # Preset Patients
         st.markdown("##### Quick Patient Case Profiles")
         preset_cols = st.columns(4)
         preset_chosen = None
 
         with preset_cols[0]:
-            if st.button("🚨 Emergency Cardiac Adult"):
+            if st.button("Emergency Cardiac Adult"):
                 preset_chosen = {
                     "Age Group": "50 to 69",
                     "Gender": "M",
@@ -532,7 +730,7 @@ with tab2:
                     "APR Medical Surgical Description": "Medical"
                 }
         with preset_cols[1]:
-            if st.button("🩺 Elective Joint Surgery"):
+            if st.button("Elective Joint Surgery"):
                 preset_chosen = {
                     "Age Group": "50 to 69",
                     "Gender": "F",
@@ -543,7 +741,7 @@ with tab2:
                     "APR Medical Surgical Description": "Surgical"
                 }
         with preset_cols[2]:
-            if st.button("👶 Routine Newborn Delivery"):
+            if st.button("Routine Delivery"):
                 preset_chosen = {
                     "Age Group": "0 to 17",
                     "Gender": "F",
@@ -554,7 +752,7 @@ with tab2:
                     "APR Medical Surgical Description": "Medical"
                 }
         with preset_cols[3]:
-            if st.button("👵 Elderly ICU Admission"):
+            if st.button("Elderly High-Risk ICU"):
                 preset_chosen = {
                     "Age Group": "70 or Older",
                     "Gender": "F",
@@ -630,15 +828,15 @@ with tab2:
 
         with res_col1:
             st.markdown(f"""
-            <div class="metric-card" style="text-align: center; padding: 28px 20px;">
-                <span style="color: #9CA3AF; text-transform: uppercase; font-size: 0.85rem;">Predicted Inpatient Stay</span>
-                <div style="font-size: 3rem; font-weight: 800; color: #00D26A; margin: 10px 0;">
-                    {pred_days:.1f} <span style="font-size: 1.2rem; color: #9CA3AF;">Days</span>
+            <div class="metric-card" style="text-align: center; padding: 24px 20px;">
+                <span style="color: {t_subtext}; text-transform: uppercase; font-size: 0.82rem;">Predicted Inpatient Stay</span>
+                <div style="font-size: 2.8rem; font-weight: 800; color: {t_accent}; margin: 8px 0;">
+                    {pred_days:.1f} <span style="font-size: 1.1rem; color: {t_subtext}; font-weight: 400;">Days</span>
                 </div>
-                <div style="color: #D1D5DB; font-size: 0.9rem;">
-                    Estimated Range: <strong>{max(1.0, pred_days - 2.5):.1f} – {pred_days + 3.0:.1f} days</strong>
+                <div style="color: {t_text}; font-size: 0.88rem;">
+                    Estimated Window: <strong>{max(1.0, pred_days - 2.5):.1f} – {pred_days + 3.0:.1f} days</strong>
                 </div>
-                <div style="margin-top: 15px;">
+                <div style="margin-top: 12px;">
                     <span class="status-badge {'badge-danger' if pred_days > 8 else ('badge-warning' if pred_days > 4 else 'badge-normal')}">
                         {'Extended Stay' if pred_days > 8 else ('Moderate Stay' if pred_days > 4 else 'Standard Stay')}
                     </span>
@@ -647,25 +845,25 @@ with tab2:
             """, unsafe_allow_html=True)
 
         with res_col2:
-            st.markdown("#### Clinical Care & Discharge Advisory")
+            st.markdown("##### Clinical Care & Discharge Advisory")
             st.write(
                 f"- **Severity Tier:** `{severity}` with `{mortality}` Risk of Mortality.\n"
-                f"- **Admission Pathway:** `{admission_type}` ({'Via ED' if ed_indicator == 'Y' else 'Non-ED'}).\n"
-                f"- **Target Planning:** Pre-discharge assessments should initiate by **Day {max(1, int(pred_days * 0.6))}**."
+                f"- **Admission Pathway:** `{admission_type}` ({'Via Emergency' if ed_indicator == 'Y' else 'Non-ED'}).\n"
+                f"- **Target Planning:** Pre-discharge assessments recommended to initiate by **Day {max(1, int(pred_days * 0.6))}**."
             )
             st.info(
-                "💡 **Model Integrity Note:** In accordance with clinical machine learning guidelines, "
-                "post-discharge variables like Total Charges and Total Costs are excluded to prevent data leakage."
+                "In accordance with clinical machine learning guidelines, post-discharge variables (Total Charges and Costs) are excluded to prevent target leakage."
             )
 
 
 # =============================================================================
-# TAB 3: Model Benchmarks & Exploratory Data Analysis (EDA)
+# TAB 4: Model Benchmarks & Exploratory Data Analysis (EDA)
 # =============================================================================
-with tab3:
-    st.subheader("📊 Cross-Model Performance Benchmarks")
+with tab4:
+    st.subheader("Cross-Model Performance Benchmarks")
     st.markdown(
-        "Evaluation results across all 5 regularized classifiers on the stratified 80/20 test split (21,885 beats):"
+        "Consolidated benchmark comparing evaluated classifiers on the held-out test split (21,885 beats). "
+        "The **MLP Neural Network** achieved the highest overall Weighted F1 score (0.9073) and Accuracy (91.45%)."
     )
 
     # Build comparison dataframe
@@ -678,10 +876,12 @@ with tab3:
             "Macro F1": f"{m_stats['macro_f1']:.4f}",
             "Precision (W)": f"{m_stats['weighted_precision']:.4f}",
             "Recall (W)": f"{m_stats['weighted_recall']:.4f}",
-            "Fit Time (s)": f"{m_stats['fit_time_sec']:.2f}s"
+            "Fit Time (s)": f"{m_stats.get('fit_time_sec', 0.0):.2f}s"
         })
-    bench_df = pd.DataFrame(bench_rows)
-    st.dataframe(bench_df, use_container_width=True, hide_index=True)
+    bench_df = pd.DataFrame(bench_rows).sort_values(by="Weighted F1", ascending=False).reset_index(drop=True)
+    bench_df.index = bench_df.index + 1
+    bench_df.index.name = "Rank"
+    st.dataframe(bench_df, use_container_width=True)
 
     st.markdown("---")
     cm_col, eda_col = st.columns(2, gap="large")
@@ -696,22 +896,21 @@ with tab3:
             cm_data,
             x=class_labels,
             y=class_labels,
-            color_continuous_scale="Viridis",
+            color_continuous_scale="Blues" if not is_dark else "Viridis",
             labels=dict(x="Predicted Class", y="Actual Class", color="Count"),
             text_auto=True
         )
         fig_cm.update_layout(
-            template="plotly_dark",
-            paper_bgcolor="#1A1F2C",
-            plot_bgcolor="#111827",
-            height=340,
+            template=t_chart_template,
+            paper_bgcolor=t_card_bg,
+            plot_bgcolor=t_plot_bg,
+            height=320,
             margin=dict(l=20, r=20, t=30, b=20)
         )
         st.plotly_chart(fig_cm, use_container_width=True)
 
     with eda_col:
         st.subheader("MIT-BIH Class Distribution Imbalance")
-        # Class distribution numbers from the dataset
         dist_df = pd.DataFrame({
             "Class": ["N (Normal)", "Q (Unknown)", "V (Ventricular)", "S (Supravent.)", "F (Fusion)"],
             "Count": [90571, 8036, 7235, 2779, 802]
@@ -725,22 +924,23 @@ with tab3:
             text="Count"
         )
         fig_dist.update_layout(
-            template="plotly_dark",
-            paper_bgcolor="#1A1F2C",
-            plot_bgcolor="#111827",
-            height=340,
+            template=t_chart_template,
+            paper_bgcolor=t_card_bg,
+            plot_bgcolor=t_plot_bg,
+            height=320,
             showlegend=False,
             margin=dict(l=20, r=20, t=30, b=20),
-            yaxis=dict(type="log", title="Beat Count (Log Scale)")
+            yaxis=dict(type="log", title="Beat Count (Log Scale)", gridcolor=t_grid),
+            xaxis=dict(gridcolor=t_grid)
         )
         st.plotly_chart(fig_dist, use_container_width=True)
 
 
 # =============================================================================
-# TAB 4: Case Study Documentation & Methodology
+# TAB 5: Case Study Documentation & Methodology
 # =============================================================================
-with tab4:
-    st.subheader("📘 Clinical & Machine Learning Methodology")
+with tab5:
+    st.subheader("Clinical & Machine Learning Methodology")
 
     st.markdown(r"""
     ### AAMI EC57 Arrhythmia Heartbeat Standard
@@ -756,16 +956,19 @@ with tab4:
 
     ---
 
-    ### Anti-Overfitting & Regularization Protocols
-    To satisfy rigorous academic and clinical machine learning standards:
-    1. **Stratified 80/20 Train-Test Partitioning:** Preserves exact class frequency ratios across the training and hold-out evaluation splits.
-    2. **Strict Preprocessing Isolation:** Feature scalers (`StandardScaler`) and categorical encoders (`OneHotEncoder`) are fitted strictly on the training partition to eliminate data leakage.
-    3. **Hyperparameter Regularization:**
-       - **Logistic Regression:** Inverse penalty $C=0.1$ with $L_2$ shrinkage.
-       - **Decision Tree:** Restricting `max_depth=6`, `min_samples_split=20`, and `min_samples_leaf=5`.
-       - **Random Forest:** Ensemble of regularized trees with bounded leaf samples.
-       - **Gaussian Naive Bayes:** Variance smoothing ($\sigma=0.1$) to prevent zero-variance degradation.
-       - **K-Nearest Neighbors:** Constrained to $k=15$ with distance weighting to prevent 1-NN memorization.
+    ### Multi-Layer Perceptron (MLP) Architecture
+    The Multi-Layer Perceptron neural network demonstrated the highest classification performance across all 10 algorithms benchmarked in the study:
+    - **Architecture:** Standardized 4-dimensional feature input vector $\to$ Dense Layer 1 (128 neurons, $\tanh$) $\to$ Dense Layer 2 (64 neurons, $\tanh$) $\to$ Softmax output layer (5 classes).
+    - **Regularization:** $L_2$ weight penalty ($\alpha = 10^{-3}$) combined with early stopping validation to prevent over-parametrization.
+    - **Optimization:** Adam optimizer with adaptive learning rate scheduling.
+
+    ---
+
+    ### Regularization & Experimental Controls
+    1. **Stratified 80/20 Train-Test Partitioning:** Preserves exact class frequency ratios across evaluation splits.
+    2. **Strict Preprocessing Isolation:** Feature scalers (`StandardScaler`) and categorical encoders (`OneHotEncoder`) are fitted strictly on the training partition.
+    3. **Unsupervised Clustering:** K-Means clustering and PCA allow validation of feature representations without label dependence.
+    4. **Leakage Prevention:** Post-discharge variables like Total Charges and Costs are excluded from the hospital stay regression pipeline.
 
     ---
 

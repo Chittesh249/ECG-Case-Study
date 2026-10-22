@@ -111,8 +111,10 @@ def train_ecg_classifiers():
     X_train_scaled = scaler.fit_transform(X_train)
     X_test_scaled = scaler.transform(X_test)
 
+    from sklearn.neural_network import MLPClassifier
     # Instantiate models matching the case study parameters
     model_defs = {
+        "MLP Neural Network": (MLPClassifier(hidden_layer_sizes=(128, 64), activation="tanh", solver="adam", alpha=1e-3, max_iter=300, random_state=42), True),
         "Logistic Regression": (LogisticRegression(C=0.1, max_iter=1000, random_state=42), True),
         "Decision Tree": (DecisionTreeClassifier(criterion="entropy", max_depth=6, min_samples_leaf=5, min_samples_split=20, random_state=42), False),
         "Random Forest": (RandomForestClassifier(n_estimators=60, max_depth=8, min_samples_split=15, random_state=42, n_jobs=-1), False),
