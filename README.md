@@ -163,3 +163,91 @@ The project uses the MIT-BIH Arrhythmia Database provided through PhysioNet and 
 ## AI Assistance Disclosure
 
 In accordance with Section 7.5 of the 23CSE301 Capstone Guidelines, generative AI tools were utilized exclusively for code scaffolding, repetitive boilerplate assistance, and Markdown table formatting. All exploratory data analysis, data quality investigations, feature selection decisions (including the exclusion of Production), model interpretations, and conclusions were independently conducted and reasoned by the project team. **Chatgpt** has been used for the error rectification and boilerplate generation. **Perplexity** for the research part of finding the correct dataset and its usage.
+
+# Credit Card Customer Segmentation: K-Means vs. Agglomerative Clustering
+
+Unsupervised segmentation of credit card holders using **K-Means** and **Agglomerative Hierarchical Clustering (Ward linkage)**, with a quantitative comparison of the two.
+
+**Dataset:** [Credit Card Dataset for Clustering (Kaggle, Arjun Bhasin)](https://www.kaggle.com/datasets/arjunbhasin2013/ccdata)
+8,950 customers, 18 behavioral attributes over a 6-month window (balance, purchases, cash advances, payment behavior, credit limit, tenure).
+
+## Objective
+
+Group customers by transactional and payment behavior to support:
+- Targeted marketing (cashback, installment offers, balance transfers)
+- Credit risk flagging (e.g., heavy cash advance use with low payments)
+- Product design based on empirical customer personas
+
+## Pipeline
+
+1. **Data audit and EDA**: dtypes, missing values, summary statistics, distributions, correlation heatmap
+2. **Preprocessing**
+   - Drop `CUST_ID`
+   - Median imputation for `MINIMUM_PAYMENTS` (313 missing) and `CREDIT_LIMIT` (1 missing)
+   - `log1p` transform on 10 right-skewed financial features
+   - `StandardScaler` (zero mean, unit variance), giving a 17-feature matrix
+3. **PCA**: explained-variance analysis and a 2D projection for visualization (PC1 + PC2 retain ~55.8% of variance)
+4. **K-Means**: k searched from 2 to 8 using inertia (elbow), silhouette, Davies-Bouldin and Calinski-Harabasz; final model with **k = 4**
+5. **Agglomerative clustering**: Ward linkage, dendrogram on a 1,500-point sample, final model fit on the full data with **k = 4**
+6. **Comparison**: internal validity metrics, Adjusted Rand Index, and a contingency heatmap between the two label sets
+
+## K-Means Personas (k = 4)
+
+| Cluster | Persona | Behavior |
+|---|---|---|
+| 0 | Conservative / low-activity | Low balance, low purchases, infrequent use |
+| 1 | Cash-advance / revolving borrowers | High balance and cash advances, very low purchases |
+| 2 | High-volume spenders | Highest balance, purchases, credit limit and payments |
+| 3 | Active installment purchasers | Frequent, installment-heavy purchases on moderate balances |
+
+## Results
+
+| Metric | K-Means (k=4) | Agglomerative (k=4) |
+|---|---|---|
+| Silhouette (↑) | 0.2174 | 0.1673 |
+| Davies-Bouldin (↓) | 1.6876 | 1.7326 |
+| Calinski-Harabasz (↑) | 2260.4 | 1870.1 |
+
+- **Adjusted Rand Index between the two methods: 0.3497**, so the algorithms agree only partially.
+- K-Means scores better on all three internal metrics and scales far better (roughly linear vs. O(n² log n) time and O(n²) memory).
+- Absolute silhouette scores are low (~0.22 or less), which suggests the segments overlap and form a continuum rather than sharply separated groups. Treat the personas as useful behavioral summaries, not hard boundaries.
+
+## Repository Structure
+
+```
+.
+├── clustering.ipynb
+└── data/
+    └── clustering/
+        ├── CC GENERAL.csv
+        └── get_dataset.py
+```
+
+The notebook searches several relative paths for `CC GENERAL.csv`, including `../data/clustering/` and `data/clustering/`.
+
+## Setup
+
+Python 3.10 was used.
+
+```bash
+pip install numpy pandas matplotlib seaborn scikit-learn scipy jupyter
+```
+
+1. Download the dataset (for example, with `data/clustering/get_dataset.py`) so that `CC GENERAL.csv` is in one of the paths above.
+2. Launch Jupyter and run `clustering.ipynb` top to bottom:
+
+```bash
+jupyter notebook clustering.ipynb
+```
+
+## Notes and Limitations
+
+- Silhouette scores during the k search use `sample_size=3000`, and the final comparison uses `sample_size=4000` (`random_state=42`), so values are sampled estimates.
+- The dendrogram uses a random 1,500-sample subset, while the final Agglomerative model is fit on all 8,950 rows.
+- Choosing k = 4 is a judgment call. Silhouette is highest at k = 2, and the elbow is not sharp.
+
+## Possible Extensions
+
+- Try Gaussian Mixture Models, DBSCAN/HDBSCAN, or K-Medoids
+- Cluster on PCA-reduced features
+- Add stability analysis across random seeds and bootstrap samples
